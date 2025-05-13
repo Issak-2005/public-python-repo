@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 env:
-  JAVA_VERSION: 21
+  PYTHON_VERSION: 3.11
 
 jobs:
   build:
@@ -16,14 +16,12 @@ jobs:
       run:
         working-directory: app1
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: JDK Setup
-        uses: actions/setup-java@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: zulu
-          cache: gradle
-      - name: gradle check
-        uses: ./gradlew check
+           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  
