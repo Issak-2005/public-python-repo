@@ -1,0 +1,26 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK Setup
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: zulu
+          cache: gradle
+      - name: gradle check
+        uses: ./gradlew check
