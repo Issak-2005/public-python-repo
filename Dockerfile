@@ -1,17 +1,12 @@
-# Use official Python image
-FROM python:3.11-slim
+FROM python:3.7
 
-COPY app/ /app
-
-
-# Set working directory
+RUN mkdir /app
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip=======
+ADD . /app/
 RUN pip install -r requirements.txt
 
-
-
-# Run the app
-CMD ["python", "main.py"]
+EXPOSE 5000
+CMD ["python", "/app/main.py"]
