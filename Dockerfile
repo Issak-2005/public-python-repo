@@ -4,7 +4,7 @@ RUN mkdir /app
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --upgrade pip=======
+RUN pip install --upgrade pip
 ADD . /app/
 RUN pip install -r requirements.txt
 
