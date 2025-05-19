@@ -1,6 +1,7 @@
 FROM python:3.7
 
 RUN mkdir /app
+COPY /app/   /app/
 WORKDIR /app
 
 # Install dependencies
