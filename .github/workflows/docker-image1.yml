@@ -30,10 +30,9 @@ test:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-
+build:
+  needs: test
+  runs-on: ubuntu-latest
     steps:
     - name: Checkout
       uses: actions/checkout@v4
