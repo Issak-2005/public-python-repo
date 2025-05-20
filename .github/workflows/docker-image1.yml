@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-test:
+  test:
     name: Analyze
     runs-on: ubuntu-latest
     permissions:
@@ -34,11 +34,13 @@ test:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-build:
-  needs: test
-  runs-on: ubuntu-latest
+  build:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the Docker image
+        run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
