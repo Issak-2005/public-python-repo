@@ -35,8 +35,8 @@ jobs:
         uses: github/codeql-action/analyze@v3
 
   build:
-    name: Build Docker Image
     needs: test
+    name: build docker image1
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
