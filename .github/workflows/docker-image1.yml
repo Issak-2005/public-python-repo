@@ -36,24 +36,24 @@ jobs:
 
   build:
     needs: test
-    name: build docker image1
+    name: Build Docker Image Locally
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build the Docker image
-        run: docker build . --file Dockerfile --tag Hello-world-py:$(date +%s)
+      - name: Build the Docker image (for testing only)
+        run: docker build . --file Dockerfile --tag hello-world-py:local
+
   docker:
     needs: build
-    
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Docker
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
@@ -62,11 +62,9 @@ jobs:
           username: ${{ vars.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build the Docker image
+      - name: Build and Push Docker image
         uses: docker/build-push-action@v3
         with:
-        context: .
-        push: true
-        tags: ${{ vars.DOCKER_USERNAME }}/Hello-world-py:latest
-
-    
+          context: .
+          push: true
+          tags: ${{ vars.DOCKER_USERNAME }}/hello-world-py:latest
