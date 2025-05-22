@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build the Docker image
-        run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+        run: docker build . --file Dockerfile --tag Hello-world-py:$(date +%s)
   docker:
     needs: build
     name: Build and Push Docker Image
@@ -66,6 +66,6 @@ jobs:
         with:
         context: .
         push: true
-        tags: ${{ vars.DOCKER_USERNAME }}/my-image-name:latest
+        tags: ${{ vars.DOCKER_USERNAME }}/Hello-world-py:latest
 
     
