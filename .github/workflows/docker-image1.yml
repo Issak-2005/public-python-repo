@@ -46,6 +46,7 @@ jobs:
         run: docker build . --file Dockerfile --tag Hello-world-py:$(date +%s)
   docker:
     needs: build
+    
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     steps:
