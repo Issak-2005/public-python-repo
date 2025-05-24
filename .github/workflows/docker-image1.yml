@@ -35,7 +35,6 @@ jobs:
         uses: github/codeql-action/analyze@v3
 
   build:
-    needs: test
     name: Build Docker Image Locally
     runs-on: ubuntu-latest
     steps:
@@ -92,4 +91,4 @@ jobs:
             sudo docker pull ${{ vars.DOCKER_USERNAME }}/hello-world-py:latest
             sudo docker stop ${{ vars.DOCKER_USERNAME }}/hello-world-py:latest
             sudo docker rm ${{ vars.DOCKER_USERNAME }}/hello-world-py:latest
-            sudo docker run -d -p 80:5000 ${{ vars.DOCKER_USERNAME }}/hello-world-py:latest
+            sudo docker run -d --name hello-world -p 80:5000 ${{ vars.DOCKER_USERNAME }}/hello-world-py:latest
