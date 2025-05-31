@@ -4,7 +4,7 @@ FROM public.ecr.aws/lambda/python:3.11
 COPY app.py ${LAMBDA_TASK_ROOT}
 
 # Copy requirements and install
-COPY requirements.txt .
+COPY /app/requirements.txt .
 RUN pip install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
 # Set the CMD to your handler
