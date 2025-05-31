@@ -1,13 +1,11 @@
-FROM python:3.7
+FROM public.ecr.aws/lambda/python:3.11
 
-RUN mkdir /app
-COPY /app/   /app/
-WORKDIR /app
+# Copy function code
+COPY app.py ${LAMBDA_TASK_ROOT}
 
-# Install dependencies
-RUN pip install --upgrade pip
-ADD . /app/
-RUN pip install -r requirements.txt
+# Copy requirements and install
+COPY requirements.txt .
+RUN pip install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
-EXPOSE 5000
-CMD ["python", "/app/main.py"]
+# Set the CMD to your handler
+CMD [ "app.lambda_handler" ]
