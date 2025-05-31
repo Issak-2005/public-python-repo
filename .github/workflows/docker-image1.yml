@@ -94,6 +94,6 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           script: |
             sudo docker pull ${{ vars.DOCKER_USERNAME }}/hello-world-py:${{ github.sha }}
-            sudo docker stop hello-world || true
-            sudo docker rm hello-world || true
+            sudo docker stop ${{ vars.DOCKER_USERNAME }}/hello-world-py || true
+            sudo docker rm ${{ vars.DOCKER_USERNAME }}/hello-world-py || true
             sudo docker run -d --name hello-world -p 80:8080 ${{ vars.DOCKER_USERNAME }}/hello-world-py:${{ github.sha }}
