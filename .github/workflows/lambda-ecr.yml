@@ -84,26 +84,26 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
   deploy:
-  needs: push
-  name: Deploy through Lambda
-  runs-on: ubuntu-latest
-  steps:
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        role-session-name: GitHubActions-Deploy
-        aws-region: ${{ env.AWS_REGION }}
+    needs: push
+    name: Deploy through Lambda
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions-Deploy
+          aws-region: ${{ env.AWS_REGION }}
 
-    - name: Update Lambda function
-      env:
-        IMAGE_URI: ${{ needs.push.outputs.image-uri }}
-      run: |
-        aws lambda update-function-code \
-          --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
-          --image-uri $IMAGE_URI
+      - name: Update Lambda function
+        env:
+          IMAGE_URI: ${{ needs.push.outputs.image-uri }}
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --image-uri $IMAGE_URI
 
-    - name: Wait for Lambda function update to complete
-      run: |
-        aws lambda wait function-updated \
-          --function-name ${{ env.LAMBDA_FUNCTION_NAME }}
+      - name: Wait for Lambda function update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }}
