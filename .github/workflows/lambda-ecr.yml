@@ -3,9 +3,13 @@ name: Lambda ECR
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: 
+      - '*'
   pull_request:
     branches: [ "main" ]
+  paths-ignore:
+    - 'app/*'
+    - 'kubernetes/Readme.md'
 
 env:
   AWS_REGION: ap-south-1
