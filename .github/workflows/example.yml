@@ -1,0 +1,478 @@
+name: Order Management v2 Workflow
+run-name: ${{ github.event.head_commit.message }} ${{ inputs.environment == 'nonlive-dr' && 'Order Management v2 Workflow (DISASTER RECOVERY)' || '' }}
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: "Whether you want to run this pipeline within nonlive account or nonlive-dr account"
+        required: true
+        default: 'nonlive'
+        options:
+          - 'nonlive'
+          - 'nonlive-dr'
+  push:
+    branches:
+      - '*'
+    paths-ignore:
+      - 'lambda/**'
+      - 'terraform/*/kpi-consumer/*'
+      - '.github/workflows/kpi-consumer*.yml'
+
+env:
+  TF_INPUT: false
+  DEVELOP_ACCOUNT_ID: ${{ vars.DEVELOP_AWS_ACCOUNT_ID }}
+  NONLIVE_ACCOUNT_ID: "${{ (inputs.environment == 'nonlive-dr' && '909582748772') ||  (inputs.environment == 'nonlive' && vars.NONLIVE_AWS_ACCOUNT_ID) || vars.NONLIVE_AWS_ACCOUNT_ID }}"
+  ASSUME_ROLE_NAME: 'github_workflow_role_order-management-v2'
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  IS_NONLIVE_DR_ENABLED: "${{ inputs.environment == 'nonlive-dr' && 'true' || 'false' }}"
+  ECR_REPOSITORY: serviceplatform/order-management-v2
+  IMAGE_TAG: ${{ github.sha }}
+  TERRAFORM_VERSION: ${{ vars.TERRAFORM_VERSION }}
+  ROLE_SESSION_NAME: 'GitHubActions-order-management-v2'
+  JAVA_VERSION: ${{ vars.JAVA_VERSION }}
+  JAVA_DISTRIBUTION: 'corretto'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lint_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ vars.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: gradle
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: 'arn:aws:iam::${{ env.DEVELOP_ACCOUNT_ID }}:role/${{ env.ASSUME_ROLE_NAME }}'
+          role-session-name: ${{ env.ROLE_SESSION_NAME }}
+
+      - name: Set GitHub Packages PAT
+        run: |
+          echo "GH_TOKEN_READ_PACKAGE=${{ secrets.GH_TOKEN_READ_PACKAGE }}" >> $GITHUB_ENV ; \
+
+      - name: Gradlew check
+        run: ./gradlew check
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test_reports
+          path: |
+            build/reports/tests/test
+
+  codeql_analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: gradle
+
+      - name: Set GitHub Packages PAT
+        run: |
+          echo "GH_TOKEN_READ_PACKAGE=${{ secrets.GH_TOKEN_READ_PACKAGE }}" >> $GITHUB_ENV ; \
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      # De-lombokking was required earlier but CodeQL now supports lombok. see https://github.blog/changelog/2023-09-01-code-scanning-with-codeql-improves-support-for-java-codebases-that-use-project-lombok/
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  build:
+    needs: [ lint_and_test ]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: 'arn:aws:iam::${{ env.DEVELOP_ACCOUNT_ID }}:role/${{ env.ASSUME_ROLE_NAME }}'
+          role-session-name: ${{ env.ROLE_SESSION_NAME }}
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: gradle
+
+      - name: Set GitHub Packages PAT
+        run: |
+          echo "GH_TOKEN_READ_PACKAGE=${{ secrets.GH_TOKEN_READ_PACKAGE }}" >> $GITHUB_ENV ; \
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          dependency-graph: generate-and-submit
+
+      - name: build
+        run: ./gradlew assemble
+
+      # Commented to not push invalid API doc for Legacy endpoints. Uncomment when valid doc is generated.
+
+      #      - name: Copy nonlive internal legacy API docs
+      #        if: github.ref == 'refs/heads/main'
+      #        uses: otto-ec/serviceplatform_github_actions/copy-file-between-repo@main
+      #        env:
+      #          API_TOKEN_GITHUB: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+      #        with:
+      #          source_file: 'build/classes/java/main/META-INF/swagger/order-management-v2-Internal_Legacy.yml'
+      #          destination_repo: 'otto-ec/serviceplatform_api'
+      #          destination_folder: 'openapi/nonlive/internal/'
+      #          user_email: 'FKT-OCTOCORN-GITHUB@otto.de'
+      #          user_name: 'FKTuser'
+      #          destination_branch: 'main'
+
+      - name: Copy nonlive internal SDU API docs
+        if: github.ref == 'refs/heads/main'
+        uses: otto-ec/serviceplatform_github_actions/copy-file-between-repo@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+        with:
+          source_file: 'build/classes/java/main/META-INF/swagger/order-management-v2-Internal_SDU.yml'
+          destination_repo: 'otto-ec/serviceplatform_api'
+          destination_folder: 'openapi/nonlive/internal/'
+          user_email: 'FKT-OCTOCORN-GITHUB@otto.de'
+          user_name: 'FKTuser'
+          destination_branch: 'main'
+
+      - name: Copy nonlive internal SDU Managed API docs
+        if: github.ref == 'refs/heads/main'
+        uses: otto-ec/serviceplatform_github_actions/copy-file-between-repo@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+        with:
+          source_file: 'build/classes/java/main/META-INF/swagger/order-management-v2-Internal_SDU_Managed.yml'
+          destination_repo: 'otto-ec/serviceplatform_api'
+          destination_folder: 'openapi/nonlive/internal/'
+          user_email: 'FKT-OCTOCORN-GITHUB@otto.de'
+          user_name: 'FKTuser'
+          destination_branch: 'main'
+
+      - name: Copy nonlive internal SDU Unmanaged API docs
+        if: github.ref == 'refs/heads/main'
+        uses: otto-ec/serviceplatform_github_actions/copy-file-between-repo@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+        with:
+          source_file: 'build/classes/java/main/META-INF/swagger/order-management-v2-Internal_SDU_Unmanaged.yml'
+          destination_repo: 'otto-ec/serviceplatform_api'
+          destination_folder: 'openapi/nonlive/internal/'
+          user_email: 'FKT-OCTOCORN-GITHUB@otto.de'
+          user_name: 'FKTuser'
+          destination_branch: 'main'
+
+      - name: Update nonlive octocorn API docs
+        if: github.ref == 'refs/heads/main'
+        uses: otto-ec/serviceplatform_github_actions/copy-file-between-repo@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+        with:
+          source_file: 'build/classes/java/main/META-INF/swagger/order-management-v2-Octocorn.yml'
+          destination_repo: 'otto-ec/serviceplatform_api'
+          destination_folder: 'openapi/nonlive/octocorn/'
+          user_email: 'FKT-OCTOCORN-GITHUB@otto.de'
+          user_name: 'FKTuser'
+          destination_branch: 'main'
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_artifacts
+          path: |
+            build/libs
+
+  push_image_to_develop_ecr:
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build_artifacts
+          path: |
+            build/libs
+
+      - name: Configure AWS Credentials
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: 'arn:aws:iam::${{ env.DEVELOP_ACCOUNT_ID }}:role/${{ env.ASSUME_ROLE_NAME }}'
+          role-session-name: ${{ env.ROLE_SESSION_NAME }}
+
+      - name: Login to Amazon ECR
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image to ECR
+        if: env.IS_NONLIVE_DR_ENABLED != 'true' && (github.ref == 'refs/heads/main' || contains(github.ref,'refs/heads/hotfix'))
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY })
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker$IMAGE_TAG build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:
+
+  push_image_to_nonlive_ecr:
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build_artifacts
+          path: |
+            build/libs
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: 'arn:aws:iam::${{ env.NONLIVE_ACCOUNT_ID }}:role/${{ env.ASSUME_ROLE_NAME }}'
+          role-session-name: ${{ env.ROLE_SESSION_NAME }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image to ECR
+        if: github.ref == 'refs/heads/main' || contains(github.ref,'refs/heads/hotfix')
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: serviceplatform/order-management-v2
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  scan_image_nonlive:
+    if: github.ref == 'refs/heads/main' || contains(github.ref,'refs/heads/hotfix')
+    needs: [ push_image_to_develop_ecr, push_image_to_nonlive_ecr ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: 'arn:aws:iam::${{ env.NONLIVE_ACCOUNT_ID }}:role/${{ env.ASSUME_ROLE_NAME }}'
+          role-session-name: GitHubActions-accounting
+
+      - name: Login to Amazon ECR
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Scan Docker image
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        uses: otto-ec/serviceplatform_github_actions/ecr-scan-image@main
+        with:
+          repository: ${{ env.ECR_REPOSITORY }}
+          tag: ${{ env.IMAGE_TAG }}
+          fail_threshold: high
+
+  deploy_develop:
+    if: |
+      !failure() && !cancelled()
+    needs: [ scan_image_nonlive ]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 'terraform/develop/order-management-v2'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: 'arn:aws:iam::${{ env.DEVELOP_ACCOUNT_ID }}:role/${{ env.ASSUME_ROLE_NAME }}'
+          role-session-name: ${{ env.ROLE_SESSION_NAME }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Setup git credentials
+        run: |
+          git config --local --remove-section http."https://github.com/"
+          git config --global url."https://FKTuser:${GH_TOKEN}@github.com/otto-ec".insteadOf "https://github.com/otto-ec"
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+
+      - name: Terraform Init
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        run: terraform init
+
+      - name: Terraform Format
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        run: terraform fmt -check
+
+      - name: Terraform Plan
+        if: env.IS_NONLIVE_DR_ENABLED != 'true'
+        env:
+          TF_VAR_ecr_account_id: ${{ env.DEVELOP_ACCOUNT_ID }}
+          TF_VAR_docker_image_tag: ${{ github.sha }}
+          TF_VAR_env: 'develop'
+          TF_VAR_mongo_atlas_project_id: ${{ vars.NONLIVE_MONGO_ATLAS_PROJECT_ID }} # TODO: kinda messy that this has NONLIVE in its name
+          TF_VAR_mongo_atlas_public_key: ${{ secrets.NONLIVE_MONGO_ATLAS_PUBLIC_KEY }}
+          TF_VAR_mongo_atlas_private_key: ${{ secrets.NONLIVE_MONGO_ATLAS_PRIVATE_KEY }}
+          TF_VAR_otto_id: ${{ vars.OTTO_ID }}
+
+        run: terraform plan -out tfplan
+
+      - name: Terraform Apply
+        if: env.IS_NONLIVE_DR_ENABLED != 'true' && (github.ref == 'refs/heads/main' || contains(github.ref,'refs/heads/hotfix'))
+        run: terraform apply tfplan
+
+  run_api_tests:
+    if: (github.ref == 'refs/heads/main' || contains(github.ref,'refs/heads/hotfix'))
+    needs: deploy_develop
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout api tests repo
+        uses: actions/checkout@v4
+        with:
+          repository: otto-ec/serviceplatform_api-tests
+          ref: main
+          token: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+
+      - name: run tests
+        if: "${{ env.IS_NONLIVE_DR_ENABLED == 'false' }}"
+        id: api_tests_run
+        env:
+          PARTNER_PORTAL_USERNAME: ${{ vars.PARTNER_PORTAL_USERNAME }}
+          PARTNER_PORTAL_PASSWORD: ${{ secrets.PARTNER_PORTAL_PASSWORD }}
+          CLIENT_SECRET: ${{ secrets.KEYCLOAK_CLIENT_SECRET_SPL_OIDC }}
+        run: |-
+          export GITSHA=$(git rev-parse --short HEAD)
+          echo "API test run STARTED"
+          ./gradlew clean orderManagement
+          echo "API test run ENDED"
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always() && env.IS_NONLIVE_DR_ENABLED == 'false'
+        with:
+          name: reports
+          path: |
+            test_reports/report.html
+
+      - name: Read message information
+        id: conclusion_message
+        working-directory: ./.github/workflows
+        run: |
+          chmod u+x notifications/get_message_template.sh
+          echo "message_failure=$(./notifications/get_message_template.sh failure)" >> $GITHUB_OUTPUT
+
+      - name: Alert in MS teams on failure
+        if: always() && steps.api_tests_run.outcome != 'success' && env.IS_NONLIVE_DR_ENABLED == 'false'
+        run: |
+          curl -X POST ${{ secrets.MS_TEAMS_WEBHOOK_URI_LIVE }} --header 'Content-Type: application/json' -d ${{ toJson(steps.conclusion_message.outputs.message_failure) }}
+
+  deploy_nonlive:
+    if: |
+      !failure() && !cancelled()
+    needs: [ run_api_tests ]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/nonlive/order-management-v2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: 'arn:aws:iam::${{ env.NONLIVE_ACCOUNT_ID }}:role/${{ env.ASSUME_ROLE_NAME }}'
+          role-session-name: ${{ env.ROLE_SESSION_NAME }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Setup git credentials
+        run: |
+          git config --local --remove-section http."https://github.com/"
+          git config --global url."https://FKTuser:${GH_TOKEN}@github.com/otto-ec".insteadOf "https://github.com/otto-ec"
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN_REPO_ACCESS }}
+
+      - name: Terraform Init
+        env:
+          nonlive_env: "${{ env.IS_NONLIVE_DR_ENABLED == 'false' && 'nonlive' || 'nonlive-dr'}}"
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.nonlive_env }}-deepsea-serviceplatform-terraform-state-store" 
+
+      - name: Terraform Format
+        run: terraform fmt -check
+
+      - name: Terraform Plan
+        env:
+          TF_VAR_ecr_account_id: ${{ env.NONLIVE_ACCOUNT_ID }}
+          TF_VAR_docker_image_tag: ${{ github.sha }}
+          TF_VAR_env: "${{ env.IS_NONLIVE_DR_ENABLED == 'false' && 'nonlive' || 'nonlive-dr'}}"
+          TF_VAR_mongo_atlas_project_id: ${{ vars.NONLIVE_MONGO_ATLAS_PROJECT_ID }}
+          TF_VAR_mongo_atlas_public_key: ${{ secrets.NONLIVE_MONGO_ATLAS_PUBLIC_KEY }}
+          TF_VAR_mongo_atlas_private_key: ${{ secrets.NONLIVE_MONGO_ATLAS_PRIVATE_KEY }}
+          TF_VAR_otto_id: ${{ vars.OTTO_ID }}
+
+        run: terraform plan -out tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' || contains(github.ref,'refs/heads/hotfix')
+        run: terraform apply tfplan
