@@ -4,7 +4,7 @@ def lambda_handler(event, context):
     return {
         'statusCode': 200,
         'body': json.dumps({
-            'message': 'deploy the image from ECR through lambda',
+            'message': 'deploy the image from ECR through lambda, hello issak how are you',
             'version': '1.0'
         })
     }
