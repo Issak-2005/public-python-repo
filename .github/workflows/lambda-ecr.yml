@@ -55,7 +55,7 @@ jobs:
         run: docker build . --file Dockerfile --tag ${{ vars.DOCKER_USERNAME }}/hello-world-py:${{ github.sha }}
 
   push:
-    needs: build
+    needs: ['build' , 'test']
     name: Push the image to ECR
     runs-on: ubuntu-latest
     outputs:
