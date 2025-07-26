@@ -10,7 +10,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: lambda-example
-  LAMBDA_FUNCTION_NAME: lambda-ecr-example1
+  LAMBDA_FUNCTION_NAME: lambda-ecr-example2
 
 permissions:
   id-token: write
